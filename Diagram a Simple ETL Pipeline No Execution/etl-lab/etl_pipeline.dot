@@ -1,0 +1,37 @@
+digraph ETL_Pipeline {
+    // Graph settings
+    rankdir=LR;
+    node [shape=box, style=filled, fontname="Arial"];
+    
+    // Data Source
+    source [label="DATA SOURCE\n\nCSV File\ndaily_orders.csv\n\nLocation:\n/data/incoming/", 
+            fillcolor="#E8F4F8", color="#2E86AB"];
+    
+    // Extract Process
+    extract [label="EXTRACT\n\nRead CSV File\nValidate Format\nLoad to Memory", 
+             fillcolor="#FFF3B0", color="#F4A261"];
+    
+    // Transform Process
+    transform [label="TRANSFORM\n\nClean Data\nValidate Rules\nEnrich Fields\nCalculate Totals", 
+               fillcolor="#FFE5B4", color="#E76F51"];
+    
+    // Load Process
+    load [label="LOAD\n\nConnect to DB\nInsert Records\nCommit Transaction", 
+          fillcolor="#D4F1DD", color="#2A9D8F"];
+    
+    // Target Database
+    target [label="TARGET\n\nPostgreSQL\necommerce_db\nprocessed_orders", 
+            fillcolor="#C8E6C9", color="#264653"];
+    
+    // Error Handling
+    error [label="ERROR LOG\n\nFailed Records\nValidation Errors", 
+           fillcolor="#FFCDD2", color="#C62828", shape=folder];
+    
+    // Data Flow
+    source -> extract [label="Daily\n2:00 AM"];
+    extract -> transform [label="Raw Data"];
+    transform -> load [label="Clean Data"];
+    load -> target [label="Insert"];
+    transform -> error [label="Invalid\nRecords", style=dashed];
+    load -> error [label="Load\nFailures", style=dashed];
+}
