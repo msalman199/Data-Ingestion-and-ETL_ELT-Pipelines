@@ -1,0 +1,279 @@
+Kafka Connect Integration
+Prerequisites
+Basic understanding of Apache Kafka concepts (topics, producers, consumers)
+Familiarity with Linux command line
+Basic knowledge of JSON configuration files
+Understanding of relational databases (PostgreSQL)
+Completed previous Kafka labs or equivalent experience
+Learning Objectives
+By the end of this lab, you will be able to:
+
+Install and configure Kafka Connect in standalone mode
+Create and deploy sink connectors to external systems
+Push streaming data from Kafka topics to PostgreSQL database
+Push streaming data from Kafka topics to local file system (S3 alternative)
+Monitor and verify connector operations
+Environment Setup
+System Requirements
+Linux machine with sudo privileges
+Minimum 4GB RAM
+10GB free disk space
+Install Required Software
+1. Install Java (if not already installed)
+
+sudo apt update
+sudo apt install -y openjdk-11-jdk
+java -version
+2. Download and Install Kafka
+
+cd ~
+wget https://archive.apache.org/dist/kafka/3.5.1/kafka_2.13-3.5.1.tgz
+tar -xzf kafka_2.13-3.5.1.tgz
+cd kafka_2.13-3.5.1
+export KAFKA_HOME=$(pwd)
+3. Install PostgreSQL
+
+sudo apt install -y postgresql postgresql-contrib
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+4. Download JDBC Connector for PostgreSQL
+
+cd $KAFKA_HOME
+mkdir -p connectors
+cd connectors
+wget https://jdbc.postgresql.org/download/postgresql-42.6.0.jar
+5. Download Kafka JDBC Connector Plugin
+
+wget https://d1i4a15mxbxib1.cloudfront.net/api/plugins/confluentinc/kafka-connect-jdbc/versions/10.7.4/confluentinc-kafka-connect-jdbc-10.7.4.zip
+unzip confluentinc-kafka-connect-jdbc-10.7.4.zip
+Task 1: Configure PostgreSQL Database Sink
+Step 1: Prepare PostgreSQL Database
+Create database and table:
+
+sudo -u postgres psql << EOF
+CREATE DATABASE kafkadb;
+\c kafkadb
+CREATE TABLE user_events (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(50),
+    event_type VARCHAR(50),
+    timestamp BIGINT,
+    data TEXT
+);
+\q
+EOF
+Verify database creation:
+
+sudo -u postgres psql -d kafkadb -c "\dt"
+Step 2: Start Kafka Services
+Terminal 1 - Start Zookeeper:
+
+cd $KAFKA_HOME
+bin/zookeeper-server-start.sh config/zookeeper.properties
+Terminal 2 - Start Kafka Broker:
+
+cd $KAFKA_HOME
+bin/kafka-server-start.sh config/server.properties
+Step 3: Create Kafka Topic
+Terminal 3 - Create topic for user events:
+
+cd $KAFKA_HOME
+bin/kafka-topics.sh --create \
+  --topic user-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 \
+  --replication-factor 1
+Verify topic creation:
+
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+Step 4: Configure JDBC Sink Connector
+Create connector configuration file:
+
+cat > config/jdbc-sink-connector.properties << 'EOF'
+name=jdbc-sink-connector
+connector.class=io.confluent.connect.jdbc.JdbcSinkConnector
+tasks.max=1
+topics=user-events
+connection.url=jdbc:postgresql://localhost:5432/kafkadb
+connection.user=postgres
+connection.password=
+auto.create=false
+auto.evolve=false
+insert.mode=insert
+pk.mode=none
+key.converter=org.apache.kafka.connect.storage.StringConverter
+value.converter=org.apache.kafka.connect.json.JsonConverter
+value.converter.schemas.enable=false
+EOF
+Step 5: Configure Connect Worker
+Edit standalone worker configuration:
+
+cat > config/connect-standalone-custom.properties << 'EOF'
+bootstrap.servers=localhost:9092
+key.converter=org.apache.kafka.connect.storage.StringConverter
+value.converter=org.apache.kafka.connect.json.JsonConverter
+key.converter.schemas.enable=false
+value.converter.schemas.enable=false
+offset.storage.file.filename=/tmp/connect.offsets
+offset.flush.interval.ms=10000
+plugin.path=/home/ubuntu/kafka_2.13-3.5.1/connectors/confluentinc-kafka-connect-jdbc-10.7.4/lib
+EOF
+Step 6: Start Kafka Connect
+Terminal 4 - Start Connect in standalone mode:
+
+cd $KAFKA_HOME
+bin/connect-standalone.sh \
+  config/connect-standalone-custom.properties \
+  config/jdbc-sink-connector.properties
+Wait for connector to start (look for "Connector started" in logs)
+
+Step 7: Produce Test Data
+Terminal 5 - Send sample events:
+
+cd $KAFKA_HOME
+bin/kafka-console-producer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092 << EOF
+{"user_id":"user001","event_type":"login","timestamp":1699000000,"data":"successful login"}
+{"user_id":"user002","event_type":"purchase","timestamp":1699000060,"data":"item: laptop"}
+{"user_id":"user003","event_type":"logout","timestamp":1699000120,"data":"session ended"}
+EOF
+Step 8: Verify Data in PostgreSQL
+Check inserted records:
+
+sudo -u postgres psql -d kafkadb -c "SELECT * FROM user_events;"
+Expected output:
+
+ id | user_id | event_type |  timestamp  |       data        
+----+---------+------------+-------------+-------------------
+  1 | user001 | login      | 1699000000  | successful login
+  2 | user002 | purchase   | 1699000060  | item: laptop
+  3 | user003 | logout     | 1699000120  | session ended
+Task 2: Configure File Sink (S3 Alternative)
+Step 1: Create File Sink Connector Configuration
+Create configuration for local file storage:
+
+cat > config/file-sink-connector.properties << 'EOF'
+name=file-sink-connector
+connector.class=org.apache.kafka.connect.file.FileStreamSinkConnector
+tasks.max=1
+topics=user-events
+file=/tmp/kafka-output.txt
+key.converter=org.apache.kafka.connect.storage.StringConverter
+value.converter=org.apache.kafka.connect.json.JsonConverter
+value.converter.schemas.enable=false
+EOF
+Step 2: Start File Sink Connector
+Stop the previous Connect worker (Ctrl+C in Terminal 4), then restart with both connectors:
+
+cd $KAFKA_HOME
+bin/connect-standalone.sh \
+  config/connect-standalone-custom.properties \
+  config/jdbc-sink-connector.properties \
+  config/file-sink-connector.properties
+Step 3: Produce Additional Test Data
+Terminal 5 - Send more events:
+
+cd $KAFKA_HOME
+bin/kafka-console-producer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092 << EOF
+{"user_id":"user004","event_type":"signup","timestamp":1699000180,"data":"new account created"}
+{"user_id":"user005","event_type":"view","timestamp":1699000240,"data":"product page viewed"}
+EOF
+Step 4: Verify File Output
+Check the output file:
+
+cat /tmp/kafka-output.txt
+Expected content:
+
+{"user_id":"user001","event_type":"login","timestamp":1699000000,"data":"successful login"}
+{"user_id":"user002","event_type":"purchase","timestamp":1699000060,"data":"item: laptop"}
+{"user_id":"user003","event_type":"logout","timestamp":1699000120,"data":"session ended"}
+{"user_id":"user004","event_type":"signup","timestamp":1699000180,"data":"new account created"}
+{"user_id":"user005","event_type":"view","timestamp":1699000240,"data":"product page viewed"}
+Step 5: Verify Database Updates
+Confirm all events are in PostgreSQL:
+
+sudo -u postgres psql -d kafkadb -c "SELECT COUNT(*) FROM user_events;"
+Should show 5 records
+
+Verification
+Connector Status Check
+View active connectors:
+
+# Check Connect logs for connector status
+# Look for lines containing "WorkerSinkTask" and "Committing offsets"
+tail -f $KAFKA_HOME/logs/connect.log | grep -i "sink"
+End-to-End Data Flow Test
+1. Produce a unique test message:
+
+echo '{"user_id":"test999","event_type":"verification","timestamp":1699999999,"data":"end-to-end test"}' | \
+bin/kafka-console-producer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092
+2. Verify in PostgreSQL:
+
+sudo -u postgres psql -d kafkadb -c "SELECT * FROM user_events WHERE user_id='test999';"
+3. Verify in file:
+
+grep "test999" /tmp/kafka-output.txt
+Performance Monitoring
+Check consumer lag:
+
+bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --describe \
+  --group connect-file-sink-connector
+Troubleshooting Tips
+Connector fails to start:
+
+Verify plugin.path in worker configuration points to correct directory
+Check PostgreSQL is running: sudo systemctl status postgresql
+Ensure JDBC driver is in the plugin path
+No data appearing in PostgreSQL:
+
+Verify database credentials in connector config
+Check table exists: sudo -u postgres psql -d kafkadb -c "\dt"
+Review Connect logs for errors: tail -f logs/connect.log
+File sink not writing:
+
+Ensure /tmp directory has write permissions
+Check if file exists: ls -l /tmp/kafka-output.txt
+Verify connector is running in Connect logs
+Connection refused errors:
+
+Confirm Kafka broker is running on port 9092
+Check Zookeeper is running on port 2181
+Verify bootstrap.servers in configurations
+Conclusion
+You have successfully:
+
+Configured Kafka Connect in standalone mode
+Created a JDBC sink connector to stream data from Kafka to PostgreSQL
+Implemented a file sink connector as a local alternative to cloud storage
+Verified end-to-end data flow from Kafka topics to multiple sinks
+Monitored connector operations and data persistence
+Key Takeaways:
+
+Kafka Connect provides declarative integration without custom code
+Multiple sink connectors can consume from the same topic simultaneously
+Connector configurations are reusable and version-controllable
+Standalone mode is suitable for development; distributed mode for production
+Next Steps:
+
+Explore source connectors to ingest data into Kafka
+Implement distributed Connect mode for high availability
+Configure Single Message Transforms (SMTs) for data manipulation
+Set up monitoring with JMX metrics
+Cleanup (Optional)
+Stop all services:
+
+# Stop Connect worker (Ctrl+C in Terminal 4)
+# Stop Kafka broker (Ctrl+C in Terminal 2)
+# Stop Zookeeper (Ctrl+C in Terminal 1)
+Remove test data:
+
+sudo -u postgres psql -d kafkadb -c "DROP TABLE user_events;"
+rm /tmp/kafka-output.txt
+rm /tmp/connect.offsets
