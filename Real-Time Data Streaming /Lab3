@@ -1,0 +1,286 @@
+Real-Time Data Streaming with Apache Kafka
+Prerequisites
+Basic Linux command-line knowledge
+Understanding of terminal operations
+Familiarity with basic networking concepts (ports, localhost)
+Java basics (Kafka runs on JVM)
+Learning Objectives
+By completing this lab, you will:
+
+Install and configure Apache Kafka on a Linux machine
+Create and manage Kafka topics
+Produce messages to Kafka topics in real-time
+Consume messages from Kafka topics
+Understand basic pub-sub messaging patterns
+Environment Setup
+System Requirements
+Linux machine (provided via "Start Lab" button)
+Minimum 2GB RAM
+Internet connection for downloading packages
+Install Java
+# Update package manager
+sudo apt update
+
+# Install OpenJDK 11
+sudo apt install -y openjdk-11-jdk
+
+# Verify installation
+java -version
+Download and Install Kafka
+# Navigate to home directory
+cd ~
+
+# Download Kafka (version 3.6.0)
+wget https://downloads.apache.org/kafka/3.6.0/kafka_2.13-3.6.0.tgz
+
+# Extract the archive
+tar -xzf kafka_2.13-3.6.0.tgz
+
+# Rename for convenience
+mv kafka_2.13-3.6.0 kafka
+
+# Navigate to Kafka directory
+cd kafka
+Start Kafka Services
+Kafka requires ZooKeeper to run. Start both services in separate terminal sessions.
+
+Terminal 1 - Start ZooKeeper:
+
+cd ~/kafka
+bin/zookeeper-server-start.sh config/zookeeper.properties
+Terminal 2 - Start Kafka Broker:
+
+cd ~/kafka
+bin/kafka-server-start.sh config/server.properties
+Keep both terminals running. Open a new terminal (Terminal 3) for the remaining tasks.
+
+Task 1: Create and Manage Kafka Topics
+Step 1: Create a Topic
+cd ~/kafka
+
+# Create a topic named 'user-events'
+bin/kafka-topics.sh --create \
+  --topic user-events \
+  --bootstrap-server localhost:9092 \
+  --partitions 3 \
+  --replication-factor 1
+Parameters explained:
+
+--topic: Name of the topic
+--bootstrap-server: Kafka broker address
+--partitions: Number of partitions for parallel processing
+--replication-factor: Number of replicas (1 for single broker)
+Step 2: List Topics
+# View all topics
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+Step 3: Describe Topic Details
+# Get detailed information about the topic
+bin/kafka-topics.sh --describe \
+  --topic user-events \
+  --bootstrap-server localhost:9092
+Expected Output:
+
+Topic name, partition count, replication factor
+Leader and replica information for each partition
+Task 2: Produce Messages to Kafka
+Step 1: Start Console Producer
+Open Terminal 4 for the producer:
+
+cd ~/kafka
+
+# Start interactive producer
+bin/kafka-console-producer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092
+Step 2: Send Messages
+Type messages directly in the terminal. Each line is a separate message:
+
+{"user_id": 101, "action": "login", "timestamp": "2024-01-15T10:30:00"}
+{"user_id": 102, "action": "page_view", "timestamp": "2024-01-15T10:31:00"}
+{"user_id": 101, "action": "purchase", "timestamp": "2024-01-15T10:32:00"}
+{"user_id": 103, "action": "logout", "timestamp": "2024-01-15T10:33:00"}
+Press Enter after each message. Keep this terminal open.
+
+Step 3: Producer with Key-Value Pairs
+Stop the previous producer (Ctrl+C) and start a new one with keys:
+
+bin/kafka-console-producer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092 \
+  --property "parse.key=true" \
+  --property "key.separator=:"
+Send messages with keys:
+
+user101:{"action": "login", "timestamp": "2024-01-15T10:35:00"}
+user102:{"action": "signup", "timestamp": "2024-01-15T10:36:00"}
+Keys ensure messages from the same user go to the same partition.
+
+Task 3: Consume Messages from Kafka
+Step 1: Start Console Consumer
+Open Terminal 5 for the consumer:
+
+cd ~/kafka
+
+# Consume messages from the beginning
+bin/kafka-console-consumer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092 \
+  --from-beginning
+You should see all previously produced messages.
+
+Step 2: Real-Time Consumption
+Stop the consumer (Ctrl+C) and restart without --from-beginning:
+
+bin/kafka-console-consumer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092
+Now switch to Terminal 4 (producer) and send new messages. Watch them appear in Terminal 5 in real-time.
+
+Step 3: Consumer Groups
+Stop the previous consumer and start with a consumer group:
+
+bin/kafka-console-consumer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092 \
+  --group analytics-group \
+  --from-beginning
+Consumer groups enable:
+
+Load balancing across multiple consumers
+Offset tracking (remembers last read position)
+Fault tolerance
+Step 4: Multiple Consumers in Same Group
+Open Terminal 6 and start another consumer in the same group:
+
+cd ~/kafka
+
+bin/kafka-console-consumer.sh \
+  --topic user-events \
+  --bootstrap-server localhost:9092 \
+  --group analytics-group
+Send messages from the producer. Notice how messages are distributed between the two consumers (load balancing).
+
+Step 5: View Consumer Group Details
+In a new terminal:
+
+cd ~/kafka
+
+# List all consumer groups
+bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+
+# Describe specific group
+bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group analytics-group \
+  --describe
+Output shows:
+
+Current offset (last read message)
+Log end offset (total messages)
+Lag (unread messages)
+Consumer ID and host
+Verification
+Verify Topic Creation
+cd ~/kafka
+
+# Check topic exists
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092 | grep user-events
+
+# Verify configuration
+bin/kafka-topics.sh --describe --topic user-events --bootstrap-server localhost:9092
+Expected: Topic listed with 3 partitions, replication factor 1.
+
+Verify Message Production
+# Count messages in topic
+bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 \
+  --topic user-events
+Expected: Non-zero offset values indicating messages were produced.
+
+Verify Message Consumption
+# Check consumer group lag
+bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group analytics-group \
+  --describe
+Expected: LAG column shows 0 or low numbers, indicating messages were consumed.
+
+End-to-End Test
+Start a consumer in one terminal
+Send a test message from producer: {"test": "verification"}
+Confirm message appears in consumer terminal within 1-2 seconds
+Troubleshooting
+Kafka Won't Start
+Issue: Port 9092 already in use
+
+# Check if Kafka is already running
+ps aux | grep kafka
+
+# Kill existing processes
+pkill -f kafka
+ZooKeeper Connection Error
+Issue: Kafka can't connect to ZooKeeper
+
+# Verify ZooKeeper is running on port 2181
+netstat -tuln | grep 2181
+
+# Restart ZooKeeper if needed
+cd ~/kafka
+bin/zookeeper-server-start.sh config/zookeeper.properties
+Messages Not Appearing
+Issue: Consumer not receiving messages
+
+Verify topic name matches exactly (case-sensitive)
+Check producer terminal for errors
+Ensure bootstrap-server is localhost:9092
+Try --from-beginning flag on consumer
+Out of Memory Error
+# Reduce Kafka heap size
+export KAFKA_HEAP_OPTS="-Xmx512M -Xms512M"
+
+# Restart Kafka broker
+Cleanup
+Stop Services Gracefully
+# Stop consumers and producers (Ctrl+C in respective terminals)
+
+# Stop Kafka broker
+cd ~/kafka
+bin/kafka-server-stop.sh
+
+# Stop ZooKeeper
+bin/zookeeper-server-stop.sh
+Delete Topic (Optional)
+bin/kafka-topics.sh --delete \
+  --topic user-events \
+  --bootstrap-server localhost:9092
+Conclusion
+You have successfully:
+
+Installed and configured Apache Kafka on Linux
+Created a multi-partition topic for scalable message streaming
+Produced real-time messages using console and key-based producers
+Consumed messages individually and as part of consumer groups
+Monitored consumer lag and partition distribution
+Real-World Applications:
+
+Log aggregation from multiple services
+Real-time analytics pipelines
+Event-driven microservices communication
+IoT sensor data streaming
+Financial transaction processing
+Key Concepts Learned:
+
+Topics: Logical channels for organizing messages
+Partitions: Enable parallel processing and scalability
+Producers: Applications that publish messages
+Consumers: Applications that subscribe to messages
+Consumer Groups: Enable load balancing and fault tolerance
+Next Steps:
+
+Explore Kafka Streams for real-time processing
+Implement producers/consumers in Python or Java
+Configure multi-broker clusters for high availability
+Integrate Kafka with databases using Kafka Connect
+Kafka's distributed architecture makes it the backbone of modern data streaming platforms, handling trillions of messages daily at companies like LinkedIn, Netflix, and Uber.
