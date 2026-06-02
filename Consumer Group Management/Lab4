@@ -1,0 +1,353 @@
+Consumer Group Management
+Prerequisites
+Basic understanding of Apache Kafka architecture (topics, partitions, producers)
+Familiarity with Linux command line
+Completed previous Kafka labs or equivalent experience
+Java 11+ installed on your system
+Learning Objectives
+By the end of this lab, you will be able to:
+
+Configure and manage Kafka consumer groups
+Understand consumer group coordination and partition assignment
+Test and observe consumer rebalancing behavior
+Monitor consumer group lag and offsets
+Environment Setup
+Install Apache Kafka
+# Download Kafka
+cd ~
+wget https://archive.apache.org/dist/kafka/3.6.0/kafka_2.13-3.6.0.tgz
+tar -xzf kafka_2.13-3.6.0.tgz
+cd kafka_2.13-3.6.0
+
+# Set environment variable for convenience
+export KAFKA_HOME=~/kafka_2.13-3.6.0
+export PATH=$PATH:$KAFKA_HOME/bin
+Start Kafka Services
+# Start ZooKeeper
+$KAFKA_HOME/bin/zookeeper-server-start.sh -daemon $KAFKA_HOME/config/zookeeper.properties
+
+# Wait 5 seconds
+sleep 5
+
+# Start Kafka broker
+$KAFKA_HOME/bin/kafka-server-start.sh -daemon $KAFKA_HOME/config/server.properties
+
+# Wait 10 seconds for broker to start
+sleep 10
+Create Test Topic
+# Create topic with 4 partitions for testing rebalancing
+$KAFKA_HOME/bin/kafka-topics.sh --create \
+  --bootstrap-server localhost:9092 \
+  --topic orders \
+  --partitions 4 \
+  --replication-factor 1
+
+# Verify topic creation
+$KAFKA_HOME/bin/kafka-topics.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --topic orders
+Task 1: Configure Consumer Groups
+Step 1: Create Consumer Configuration Files
+Create a directory for consumer configurations:
+
+mkdir -p ~/kafka-lab/consumers
+cd ~/kafka-lab/consumers
+Create the first consumer configuration file:
+
+cat > consumer1.properties << 'EOF'
+bootstrap.servers=localhost:9092
+group.id=order-processing-group
+key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+auto.offset.reset=earliest
+enable.auto.commit=true
+auto.commit.interval.ms=1000
+session.timeout.ms=10000
+heartbeat.interval.ms=3000
+EOF
+Create a second consumer configuration with different settings:
+
+cat > consumer2.properties << 'EOF'
+bootstrap.servers=localhost:9092
+group.id=order-processing-group
+key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+auto.offset.reset=earliest
+enable.auto.commit=false
+session.timeout.ms=10000
+heartbeat.interval.ms=3000
+EOF
+Step 2: Create Python Consumer Scripts
+Install required Python library:
+
+pip3 install kafka-python
+Create the first consumer script:
+
+cat > consumer_group_member.py << 'EOF'
+from kafka import KafkaConsumer
+import sys
+import time
+
+def create_consumer(consumer_id, group_id):
+    """
+    Create and configure a Kafka consumer.
+    
+    Args:
+        consumer_id: Unique identifier for this consumer
+        group_id: Consumer group name
+    
+    Returns:
+        KafkaConsumer instance
+    """
+    # TODO: Initialize KafkaConsumer with:
+    # - topic: 'orders'
+    # - bootstrap_servers
+    # - group_id
+    # - auto_offset_reset='earliest'
+    # - enable_auto_commit=True
+    # - consumer_timeout_ms=1000
+    pass
+
+def consume_messages(consumer, consumer_id):
+    """
+    Consume and process messages from Kafka.
+    
+    Args:
+        consumer: KafkaConsumer instance
+        consumer_id: Identifier for logging
+    """
+    print(f"[Consumer {consumer_id}] Starting to consume messages...")
+    
+    try:
+        for message in consumer:
+            # TODO: Print message details including:
+            # - partition
+            # - offset
+            # - key
+            # - value
+            pass
+    except KeyboardInterrupt:
+        print(f"\n[Consumer {consumer_id}] Shutting down...")
+    finally:
+        consumer.close()
+
+if __name__ == "__main__":
+    consumer_id = sys.argv[1] if len(sys.argv) > 1 else "1"
+    group_id = "order-processing-group"
+    
+    consumer = create_consumer(consumer_id, group_id)
+    consume_messages(consumer, consumer_id)
+EOF
+Step 3: Start Multiple Consumers in the Same Group
+Open multiple terminal windows and start consumers:
+
+Terminal 1:
+
+cd ~/kafka-lab/consumers
+python3 consumer_group_member.py consumer-1
+Terminal 2:
+
+cd ~/kafka-lab/consumers
+python3 consumer_group_member.py consumer-2
+Step 4: Monitor Consumer Group
+In a new terminal, check consumer group status:
+
+# List all consumer groups
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+
+# Describe the consumer group
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --describe
+Expected Output Analysis:
+
+Each consumer should be assigned specific partitions
+Total partitions (4) should be distributed among active consumers
+Note the CURRENT-OFFSET and LAG columns
+Task 2: Test Consumer Rebalancing
+Step 1: Produce Test Messages
+In a new terminal, produce messages to the topic:
+
+cd $KAFKA_HOME
+
+# Produce 20 test messages
+for i in {1..20}; do
+  echo "order-$i:Product purchased - Order ID: $i, Amount: \$$(($i * 10))" | \
+  $KAFKA_HOME/bin/kafka-console-producer.sh \
+    --bootstrap-server localhost:9092 \
+    --topic orders \
+    --property "parse.key=true" \
+    --property "key.separator=:"
+done
+Observe which consumers receive which messages based on partition assignment.
+
+Step 2: Trigger Rebalancing by Adding a Consumer
+Open a third terminal and start another consumer:
+
+cd ~/kafka-lab/consumers
+python3 consumer_group_member.py consumer-3
+Observe:
+
+Existing consumers will pause briefly
+Partitions will be redistributed
+All consumers will resume with new partition assignments
+Check the new partition distribution:
+
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --describe
+Step 3: Trigger Rebalancing by Removing a Consumer
+Stop one consumer (press Ctrl+C in Terminal 1).
+
+Observe:
+
+Remaining consumers detect the member leaving
+Partitions are redistributed among remaining consumers
+Processing continues without message loss
+Verify the rebalance:
+
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --describe
+Step 4: Test Consumer Group Lag
+Create a script to monitor lag:
+
+cat > monitor_lag.sh << 'EOF'
+#!/bin/bash
+
+echo "Monitoring Consumer Group Lag..."
+echo "Press Ctrl+C to stop"
+echo ""
+
+while true; do
+  clear
+  date
+  echo "================================"
+  $KAFKA_HOME/bin/kafka-consumer-groups.sh \
+    --bootstrap-server localhost:9092 \
+    --group order-processing-group \
+    --describe
+  sleep 5
+done
+EOF
+
+chmod +x monitor_lag.sh
+Run the monitoring script in a separate terminal:
+
+cd ~/kafka-lab/consumers
+./monitor_lag.sh
+Stop all consumers and produce more messages to observe lag increase:
+
+# Produce 50 more messages
+for i in {21..70}; do
+  echo "order-$i:Product purchased - Order ID: $i, Amount: \$$(($i * 10))" | \
+  $KAFKA_HOME/bin/kafka-console-producer.sh \
+    --bootstrap-server localhost:9092 \
+    --topic orders \
+    --property "parse.key=true" \
+    --property "key.separator=:"
+done
+Step 5: Reset Consumer Group Offsets
+Stop all consumers, then reset offsets:
+
+# Reset to earliest
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --topic orders \
+  --reset-offsets \
+  --to-earliest \
+  --execute
+
+# Alternative: Reset to specific offset
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --topic orders \
+  --reset-offsets \
+  --to-offset 5 \
+  --execute
+Verification
+Verify Consumer Group Configuration
+Check active consumer groups:
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+Expected: order-processing-group appears in the list
+
+Verify partition assignment:
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group order-processing-group \
+  --describe
+Expected: All 4 partitions assigned, LAG shows 0 when consumers are active
+
+Test rebalancing worked:
+Start 2 consumers: Each should get 2 partitions
+Add 3rd consumer: Partitions redistribute (2-1-1 or similar)
+Remove 1 consumer: Remaining consumers pick up orphaned partitions
+Verify Message Processing
+Check total messages consumed:
+# Count messages in topic
+$KAFKA_HOME/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+  --broker-list localhost:9092 \
+  --topic orders
+Verify no message loss:
+Total messages produced should equal sum of all partition offsets
+Each message should be consumed exactly once per consumer group
+Troubleshooting Tips
+Consumer not joining group:
+
+Verify Kafka broker is running: jps | grep Kafka
+Check network connectivity: netstat -an | grep 9092
+Review consumer logs for connection errors
+Rebalancing takes too long:
+
+Reduce session.timeout.ms in consumer configuration
+Ensure heartbeat.interval.ms < session.timeout.ms / 3
+Messages not distributing evenly:
+
+Verify topic has multiple partitions
+Check if using key-based partitioning (messages with same key go to same partition)
+Consumer lag increasing:
+
+Scale up consumer instances
+Optimize message processing logic
+Increase consumer fetch size
+Conclusion
+In this lab, you successfully:
+
+Configured Kafka consumer groups with multiple members
+Observed automatic partition assignment and load distribution
+Triggered and monitored consumer rebalancing events
+Managed consumer group offsets and lag
+Understood the coordination mechanisms that enable scalable message consumption
+Key Takeaways:
+
+Consumer groups enable horizontal scaling of message processing
+Kafka automatically rebalances partitions when consumers join or leave
+Each partition is consumed by exactly one consumer in a group
+Monitoring consumer lag is critical for production systems
+Offset management strategies affect message processing guarantees
+Next Steps:
+
+Explore different partition assignment strategies (range, round-robin, sticky)
+Implement custom rebalance listeners for graceful shutdown
+Practice manual offset management for exactly-once processing
+Test consumer group behavior under failure scenarios
+Cleanup (Optional)
+# Stop consumers (Ctrl+C in each terminal)
+
+# Delete topic
+$KAFKA_HOME/bin/kafka-topics.sh --delete \
+  --bootstrap-server localhost:9092 \
+  --topic orders
+
+# Stop Kafka and ZooKeeper
+$KAFKA_HOME/bin/kafka-server-stop.sh
+$KAFKA_HOME/bin/zookeeper-server-stop.sh
