@@ -1,0 +1,410 @@
+
+Lab 2: Kafka Cluster Setup
+Prerequisites
+Basic Linux command-line knowledge
+Understanding of distributed systems concepts
+Familiarity with configuration files (properties format)
+Java runtime environment knowledge
+Basic networking concepts (ports, localhost)
+Learning Objectives
+By completing this lab, you will:
+
+Install and configure Apache Kafka on a Linux machine
+Set up a multi-broker Kafka cluster on a single node
+Configure ZooKeeper for cluster coordination
+Create and manage Kafka topics
+Test cluster functionality with producers and consumers
+Verify cluster health and broker communication
+Environment Setup
+Note: Al Nafi provides a bare-metal Linux cloud machine. Click the "Start Lab" button to access your environment. All installations will be performed during this lab.
+
+System Requirements:
+
+Linux machine (Ubuntu 20.04+ or CentOS 7+)
+Minimum 4GB RAM
+20GB available disk space
+Internet connectivity for downloads
+Task 1: Install Kafka and ZooKeeper
+Step 1.1: Install Java
+Kafka requires Java 8 or higher.
+
+# Update package manager
+sudo apt update
+
+# Install OpenJDK 11
+sudo apt install -y openjdk-11-jdk
+
+# Verify installation
+java -version
+Step 1.2: Download and Extract Kafka
+# Navigate to opt directory
+cd /opt
+
+# Download Kafka (version 3.6.0)
+sudo wget https://downloads.apache.org/kafka/3.6.0/kafka_2.13-3.6.0.tgz
+
+# Extract the archive
+sudo tar -xzf kafka_2.13-3.6.0.tgz
+
+# Create symbolic link for easier access
+sudo ln -s kafka_2.13-3.6.0 kafka
+
+# Set ownership
+sudo chown -R $USER:$USER /opt/kafka_2.13-3.6.0
+Step 1.3: Set Environment Variables
+# Add Kafka to PATH
+echo 'export KAFKA_HOME=/opt/kafka' >> ~/.bashrc
+echo 'export PATH=$PATH:$KAFKA_HOME/bin' >> ~/.bashrc
+
+# Reload bashrc
+source ~/.bashrc
+
+# Verify
+echo $KAFKA_HOME
+Task 2: Configure Multi-Broker Cluster
+Step 2.1: Configure ZooKeeper
+# Navigate to Kafka config directory
+cd $KAFKA_HOME/config
+
+# Create data directory for ZooKeeper
+sudo mkdir -p /var/lib/zookeeper
+sudo chown $USER:$USER /var/lib/zookeeper
+
+# Edit ZooKeeper configuration
+cat > zookeeper.properties << 'EOF'
+dataDir=/var/lib/zookeeper
+clientPort=2181
+maxClientCnxns=0
+admin.enableServer=false
+tickTime=2000
+initLimit=10
+syncLimit=5
+EOF
+Step 2.2: Configure Broker 1
+# Create log directories
+sudo mkdir -p /var/lib/kafka-logs-1
+sudo chown $USER:$USER /var/lib/kafka-logs-1
+
+# Create broker 1 configuration
+cat > server-1.properties << 'EOF'
+broker.id=1
+listeners=PLAINTEXT://localhost:9092
+log.dirs=/var/lib/kafka-logs-1
+zookeeper.connect=localhost:2181
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+num.partitions=3
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=2
+transaction.state.log.replication.factor=2
+transaction.state.log.min.isr=2
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connection.timeout.ms=18000
+group.initial.rebalance.delay.ms=0
+EOF
+Step 2.3: Configure Broker 2
+# Create log directories
+sudo mkdir -p /var/lib/kafka-logs-2
+sudo chown $USER:$USER /var/lib/kafka-logs-2
+
+# Create broker 2 configuration
+cat > server-2.properties << 'EOF'
+broker.id=2
+listeners=PLAINTEXT://localhost:9093
+log.dirs=/var/lib/kafka-logs-2
+zookeeper.connect=localhost:2181
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+num.partitions=3
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=2
+transaction.state.log.replication.factor=2
+transaction.state.log.min.isr=2
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connection.timeout.ms=18000
+group.initial.rebalance.delay.ms=0
+EOF
+Step 2.4: Configure Broker 3
+# Create log directories
+sudo mkdir -p /var/lib/kafka-logs-3
+sudo chown $USER:$USER /var/lib/kafka-logs-3
+
+# Create broker 3 configuration
+cat > server-3.properties << 'EOF'
+broker.id=3
+listeners=PLAINTEXT://localhost:9094
+log.dirs=/var/lib/kafka-logs-3
+zookeeper.connect=localhost:2181
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+num.partitions=3
+num.recovery.threads.per.data.dir=1
+offsets.topic.replication.factor=2
+transaction.state.log.replication.factor=2
+transaction.state.log.min.isr=2
+log.retention.hours=168
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000
+zookeeper.connection.timeout.ms=18000
+group.initial.rebalance.delay.ms=0
+EOF
+Step 2.5: Start ZooKeeper
+# Start ZooKeeper in background
+$KAFKA_HOME/bin/zookeeper-server-start.sh -daemon $KAFKA_HOME/config/zookeeper.properties
+
+# Wait for ZooKeeper to start
+sleep 5
+
+# Verify ZooKeeper is running
+netstat -tuln | grep 2181
+Step 2.6: Start All Kafka Brokers
+# Start broker 1
+$KAFKA_HOME/bin/kafka-server-start.sh -daemon $KAFKA_HOME/config/server-1.properties
+
+# Wait for broker to initialize
+sleep 10
+
+# Start broker 2
+$KAFKA_HOME/bin/kafka-server-start.sh -daemon $KAFKA_HOME/config/server-2.properties
+
+# Wait for broker to initialize
+sleep 10
+
+# Start broker 3
+$KAFKA_HOME/bin/kafka-server-start.sh -daemon $KAFKA_HOME/config/server-3.properties
+
+# Wait for all brokers to initialize
+sleep 10
+Step 2.7: Verify All Services Are Running
+# Check if all ports are listening
+netstat -tuln | grep -E '2181|9092|9093|9094'
+
+# Check running Java processes
+jps
+
+# Expected output should show:
+# - QuorumPeerMain (ZooKeeper)
+# - Kafka (3 instances)
+Task 3: Test Cluster Functionality
+Step 3.1: Create a Replicated Topic
+# Create topic with 3 partitions and replication factor of 3
+$KAFKA_HOME/bin/kafka-topics.sh --create \
+  --bootstrap-server localhost:9092 \
+  --replication-factor 3 \
+  --partitions 3 \
+  --topic test-cluster-topic
+
+# List topics
+$KAFKA_HOME/bin/kafka-topics.sh --list \
+  --bootstrap-server localhost:9092
+Step 3.2: Describe Topic Details
+# View topic configuration and partition distribution
+$KAFKA_HOME/bin/kafka-topics.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --topic test-cluster-topic
+Expected Output Analysis:
+
+Each partition should have a leader on different brokers
+Replicas should be distributed across all three brokers
+ISR (In-Sync Replicas) should show all replicas
+Step 3.3: Test Producer
+# Start console producer
+$KAFKA_HOME/bin/kafka-console-producer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic test-cluster-topic
+Instructions:
+
+Type several messages (one per line)
+Example messages:
+Message 1: Testing broker 1
+Message 2: Testing broker 2
+Message 3: Testing broker 3
+Press Ctrl+C to exit
+Step 3.4: Test Consumer
+Open a new terminal session and run:
+
+# Start console consumer from beginning
+$KAFKA_HOME/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic test-cluster-topic \
+  --from-beginning
+Verification: You should see all messages you produced earlier.
+
+Step 3.5: Test Consumer Groups
+# Start consumer with consumer group
+$KAFKA_HOME/bin/kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic test-cluster-topic \
+  --group test-consumer-group \
+  --from-beginning
+Press Ctrl+C after viewing messages.
+
+# List consumer groups
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --list
+
+# Describe consumer group
+$KAFKA_HOME/bin/kafka-consumer-groups.sh \
+  --bootstrap-server localhost:9092 \
+  --group test-consumer-group \
+  --describe
+Step 3.6: Test Cluster Resilience
+# Find Kafka process IDs
+jps | grep Kafka
+
+# Stop one broker (use the PID from broker on port 9094)
+kill <PID_of_broker_3>
+
+# Wait a moment
+sleep 5
+
+# Check topic status
+$KAFKA_HOME/bin/kafka-topics.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --topic test-cluster-topic
+Observation: The cluster should still be operational with 2 out of 3 brokers running. Partitions previously led by broker 3 should have new leaders.
+
+# Restart broker 3
+$KAFKA_HOME/bin/kafka-server-start.sh -daemon $KAFKA_HOME/config/server-3.properties
+
+# Wait for broker to rejoin
+sleep 10
+
+# Verify cluster is fully operational
+$KAFKA_HOME/bin/kafka-topics.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --topic test-cluster-topic
+Verification
+Verify Cluster Health
+# Check all services are running
+jps
+
+# Verify all broker ports
+netstat -tuln | grep -E '9092|9093|9094'
+
+# List all topics
+$KAFKA_HOME/bin/kafka-topics.sh --list \
+  --bootstrap-server localhost:9092
+
+# Check broker metadata
+$KAFKA_HOME/bin/kafka-broker-api-versions.sh \
+  --bootstrap-server localhost:9092 | head -20
+Verify Replication
+# Create a test script to verify replication
+cat > verify_cluster.sh << 'EOF'
+#!/bin/bash
+
+echo "=== Cluster Verification ==="
+echo ""
+
+echo "1. Checking ZooKeeper..."
+if netstat -tuln | grep -q 2181; then
+    echo "   [OK] ZooKeeper is running on port 2181"
+else
+    echo "   [FAIL] ZooKeeper is not running"
+fi
+
+echo ""
+echo "2. Checking Kafka Brokers..."
+for port in 9092 9093 9094; do
+    if netstat -tuln | grep -q $port; then
+        echo "   [OK] Broker on port $port is running"
+    else
+        echo "   [FAIL] Broker on port $port is not running"
+    fi
+done
+
+echo ""
+echo "3. Listing Topics..."
+$KAFKA_HOME/bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+
+echo ""
+echo "4. Topic Details..."
+$KAFKA_HOME/bin/kafka-topics.sh --describe --bootstrap-server localhost:9092 --topic test-cluster-topic
+
+echo ""
+echo "=== Verification Complete ==="
+EOF
+
+chmod +x verify_cluster.sh
+./verify_cluster.sh
+Expected Results
+ZooKeeper running on port 2181
+Three Kafka brokers running on ports 9092, 9093, 9094
+Topic test-cluster-topic exists with 3 partitions
+Each partition has 3 replicas distributed across brokers
+All replicas are in-sync (ISR count = 3)
+Messages can be produced and consumed successfully
+Troubleshooting Tips
+Issue: Broker Fails to Start
+# Check logs
+tail -f /opt/kafka/logs/server.log
+
+# Common causes:
+# - Port already in use
+# - Insufficient memory
+# - ZooKeeper not running
+Issue: Cannot Connect to Broker
+# Verify broker is listening
+netstat -tuln | grep 9092
+
+# Check firewall rules
+sudo ufw status
+
+# Test connection
+telnet localhost 9092
+Issue: Out of Sync Replicas
+# Check under-replicated partitions
+$KAFKA_HOME/bin/kafka-topics.sh --describe \
+  --bootstrap-server localhost:9092 \
+  --under-replicated-partitions
+
+# Restart affected broker
+Cleanup Commands
+# Stop all Kafka brokers
+pkill -f 'kafka.Kafka'
+
+# Stop ZooKeeper
+pkill -f 'org.apache.zookeeper'
+
+# Remove data directories (optional - for fresh start)
+sudo rm -rf /var/lib/kafka-logs-*
+sudo rm -rf /var/lib/zookeeper
+Conclusion
+You have successfully:
+
+Installed Apache Kafka and ZooKeeper on a Linux machine
+Configured a 3-broker Kafka cluster on a single node
+Created replicated topics with multiple partitions
+Tested message production and consumption
+Verified cluster resilience by simulating broker failure
+Monitored cluster health and partition distribution
+Key Takeaways:
+
+Kafka clusters provide fault tolerance through replication
+ZooKeeper coordinates broker metadata and leader election
+Multiple brokers can run on a single machine using different ports
+Replication factor determines data redundancy
+Partitions enable parallel processing and scalability
+Next Steps:
+
+Explore Kafka Streams for real-time processing
+Implement custom producers and consumers in Java/Python
+Configure security features (SSL, SASL)
+Set up monitoring with JMX metrics
+Practice disaster recovery scenarios
+This cluster setup provides a foundation for building distributed streaming applications and understanding Kafka's architecture in production environments.
