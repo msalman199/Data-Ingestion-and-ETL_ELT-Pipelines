@@ -1,0 +1,318 @@
+Diagram a Simple ETL Pipeline (No Execution)
+Prerequisites
+Basic understanding of databases and data concepts
+Familiarity with Linux command line
+Text editor experience (nano, vim, or gedit)
+Understanding of what data sources and destinations are
+Learning Objectives
+By the end of this lab, you will be able to:
+
+Identify components of an ETL (Extract, Transform, Load) pipeline
+Design a basic ETL architecture diagram
+Explain data flow between pipeline components
+Document transformation requirements
+Create visual representations of data pipelines
+Introduction
+ETL (Extract, Transform, Load) pipelines are fundamental to data engineering. Before building pipelines, you must design them. This lab teaches you to diagram a simple ETL pipeline for a real-world scenario: processing customer order data from a CSV file into a database.
+
+Scenario: An e-commerce company receives daily order files in CSV format. You need to design a pipeline that extracts this data, transforms it (cleans and enriches), and loads it into a PostgreSQL database for analysis.
+
+Environment Setup
+After clicking "Start Lab", you'll have a Linux machine. Install the required tools:
+
+# Update package manager
+sudo apt update
+
+# Install diagram creation tool (Graphviz)
+sudo apt install -y graphviz
+
+# Install text editor if needed
+sudo apt install -y nano
+
+# Create working directory
+mkdir -p ~/etl-lab
+cd ~/etl-lab
+Task 1: Identify and Document Pipeline Components
+Step 1: Create Component Documentation File
+Create a file to document each pipeline component:
+
+nano pipeline_components.txt
+Step 2: Document the Data Source
+Add the following information about your data source:
+
+=== ETL PIPELINE COMPONENTS ===
+
+1. DATA SOURCE (EXTRACT)
+   - Type: CSV File
+   - Name: daily_orders.csv
+   - Location: /data/incoming/
+   - Format: Comma-separated values
+   - Columns: order_id, customer_id, product_id, quantity, price, order_date
+   - Update Frequency: Daily at 2:00 AM
+   - File Size: ~50MB per file
+   
+   Sample Data Structure:
+   order_id,customer_id,product_id,quantity,price,order_date
+   1001,C001,P501,2,29.99,2024-01-15
+   1002,C002,P502,1,49.99,2024-01-15
+Step 3: Define Transformation Requirements
+Add transformation details to the same file:
+
+2. TRANSFORMATION LAYER (TRANSFORM)
+   - Data Cleaning:
+     * Remove duplicate order_id entries
+     * Handle missing values in customer_id
+     * Validate price > 0
+     * Validate quantity > 0
+   
+   - Data Enrichment:
+     * Calculate total_amount = quantity * price
+     * Convert order_date to standard format (YYYY-MM-DD)
+     * Add processing_timestamp
+   
+   - Data Validation:
+     * Check order_id is unique
+     * Verify customer_id format (C + 3 digits)
+     * Verify product_id format (P + 3 digits)
+   
+   - Business Rules:
+     * Flag orders with total_amount > $1000 as "high_value"
+     * Reject orders with invalid dates
+Step 4: Define Target Database
+Add target database specifications:
+
+3. TARGET DATABASE (LOAD)
+   - Database Type: PostgreSQL
+   - Database Name: ecommerce_db
+   - Schema: orders
+   - Table Name: processed_orders
+   
+   Table Structure:
+   - order_id (INTEGER, PRIMARY KEY)
+   - customer_id (VARCHAR(10))
+   - product_id (VARCHAR(10))
+   - quantity (INTEGER)
+   - price (DECIMAL(10,2))
+   - total_amount (DECIMAL(10,2))
+   - order_date (DATE)
+   - processing_timestamp (TIMESTAMP)
+   - high_value_flag (BOOLEAN)
+   
+   - Load Strategy: Append new records daily
+   - Error Handling: Log failed records to error table
+Save and close the file (Ctrl+X, then Y, then Enter).
+
+Task 2: Create Architecture Diagram
+Step 1: Create Diagram Definition File
+Use Graphviz DOT language to define your pipeline diagram:
+
+nano etl_pipeline.dot
+Step 2: Define the Pipeline Architecture
+Add the following diagram code:
+
+digraph ETL_Pipeline {
+    // Graph settings
+    rankdir=LR;
+    node [shape=box, style=filled, fontname="Arial"];
+    
+    // Data Source
+    source [label="DATA SOURCE\n\nCSV File\ndaily_orders.csv\n\nLocation:\n/data/incoming/", 
+            fillcolor="#E8F4F8", color="#2E86AB"];
+    
+    // Extract Process
+    extract [label="EXTRACT\n\nRead CSV File\nValidate Format\nLoad to Memory", 
+             fillcolor="#FFF3B0", color="#F4A261"];
+    
+    // Transform Process
+    transform [label="TRANSFORM\n\nClean Data\nValidate Rules\nEnrich Fields\nCalculate Totals", 
+               fillcolor="#FFE5B4", color="#E76F51"];
+    
+    // Load Process
+    load [label="LOAD\n\nConnect to DB\nInsert Records\nCommit Transaction", 
+          fillcolor="#D4F1DD", color="#2A9D8F"];
+    
+    // Target Database
+    target [label="TARGET\n\nPostgreSQL\necommerce_db\nprocessed_orders", 
+            fillcolor="#C8E6C9", color="#264653"];
+    
+    // Error Handling
+    error [label="ERROR LOG\n\nFailed Records\nValidation Errors", 
+           fillcolor="#FFCDD2", color="#C62828", shape=folder];
+    
+    // Data Flow
+    source -> extract [label="Daily\n2:00 AM"];
+    extract -> transform [label="Raw Data"];
+    transform -> load [label="Clean Data"];
+    load -> target [label="Insert"];
+    transform -> error [label="Invalid\nRecords", style=dashed];
+    load -> error [label="Load\nFailures", style=dashed];
+}
+Save and close the file.
+
+Step 3: Generate the Diagram
+Create a visual diagram from your definition:
+
+# Generate PNG image
+dot -Tpng etl_pipeline.dot -o etl_pipeline.png
+
+# Generate SVG (scalable vector)
+dot -Tsvg etl_pipeline.dot -o etl_pipeline.svg
+
+# Generate PDF
+dot -Tpdf etl_pipeline.dot -o etl_pipeline.pdf
+Step 4: View the Diagram
+# List generated files
+ls -lh etl_pipeline.*
+
+# If you have a GUI, view the image
+# display etl_pipeline.png  # (if ImageMagick is installed)
+# Or transfer the file to view locally
+Step 5: Create Data Flow Documentation
+Document how data flows through your pipeline:
+
+nano data_flow_explanation.txt
+Add the following content:
+
+=== ETL PIPELINE DATA FLOW ===
+
+FLOW SEQUENCE:
+1. Source → Extract
+   - Daily CSV file arrives at /data/incoming/ at 2:00 AM
+   - File contains raw order data from e-commerce system
+   - Approximately 10,000-50,000 orders per file
+
+2. Extract → Transform
+   - CSV file is read into memory
+   - Data is parsed into structured format
+   - Initial format validation occurs
+   - Raw data passed to transformation layer
+
+3. Transform → Load (Success Path)
+   - Data cleaning removes duplicates
+   - Validation rules applied to each record
+   - Business calculations performed (total_amount)
+   - Enrichment adds processing timestamp
+   - Clean records passed to load process
+
+4. Transform → Error Log (Failure Path)
+   - Invalid records identified during validation
+   - Records with missing required fields
+   - Records failing business rules
+   - Logged for manual review
+
+5. Load → Target Database
+   - Connection established to PostgreSQL
+   - Records inserted into processed_orders table
+   - Transaction committed
+   - Success count logged
+
+6. Load → Error Log (Failure Path)
+   - Database connection failures
+   - Constraint violations
+   - Duplicate key errors
+   - Logged with error details
+
+DATA TRANSFORMATIONS:
+- Input: order_id,customer_id,product_id,quantity,price,order_date
+- Output: All input fields PLUS total_amount, processing_timestamp, high_value_flag
+
+QUALITY CHECKS:
+- Duplicate detection: Check order_id uniqueness
+- Data validation: Verify ID formats and numeric ranges
+- Business rules: Flag high-value orders (>$1000)
+- Completeness: Ensure no NULL values in required fields
+
+ERROR HANDLING:
+- Validation errors: Logged with reason code
+- Load failures: Retry logic (3 attempts)
+- Critical failures: Alert sent to operations team
+Save and close the file.
+
+Verification
+Step 1: Verify Component Documentation
+# Check that your components file exists and has content
+cat pipeline_components.txt | grep -E "DATA SOURCE|TRANSFORMATION|TARGET"
+Expected output: You should see all three section headers.
+
+Step 2: Verify Diagram Files
+# Check diagram files were created
+ls -lh etl_pipeline.*
+
+# Verify PNG file size (should be > 0 bytes)
+stat etl_pipeline.png
+Expected output: You should see .dot, .png, .svg, and .pdf files.
+
+Step 3: Verify Data Flow Documentation
+# Check data flow documentation
+wc -l data_flow_explanation.txt
+Expected output: File should have approximately 50+ lines.
+
+Step 4: Validate Diagram Syntax
+# Check for syntax errors in DOT file
+dot -v etl_pipeline.dot 2>&1 | grep -i error
+Expected output: No error messages should appear.
+
+Step 5: Create Summary Report
+# Generate a summary of your work
+cat > lab_summary.txt << 'EOF'
+ETL PIPELINE DESIGN LAB - COMPLETION SUMMARY
+
+Components Documented:
+- Data Source: CSV file with order data
+- Transformation Layer: Cleaning, validation, enrichment
+- Target Database: PostgreSQL with structured schema
+
+Diagram Created:
+- Visual representation of pipeline flow
+- Shows all major components
+- Includes error handling paths
+- Generated in multiple formats (PNG, SVG, PDF)
+
+Data Flow Explained:
+- Step-by-step flow from source to target
+- Transformation details documented
+- Error handling paths defined
+- Quality checks specified
+
+Key Design Decisions:
+1. Daily batch processing at 2:00 AM
+2. Append-only load strategy
+3. Error logging for failed records
+4. High-value order flagging (>$1000)
+5. Three-layer architecture (Extract, Transform, Load)
+
+Files Created:
+- pipeline_components.txt (component specifications)
+- etl_pipeline.dot (diagram definition)
+- etl_pipeline.png (visual diagram)
+- data_flow_explanation.txt (flow documentation)
+EOF
+
+cat lab_summary.txt
+Troubleshooting
+Issue: Graphviz not generating images
+
+# Solution: Check if Graphviz is properly installed
+which dot
+sudo apt install -y graphviz
+Issue: Cannot view PNG file
+
+# Solution: Transfer file to local machine or use text-based verification
+file etl_pipeline.png  # Should show "PNG image data"
+Issue: Syntax errors in DOT file
+
+# Solution: Validate DOT syntax
+dot -v etl_pipeline.dot
+# Check for missing semicolons or brackets
+Conclusion
+You have successfully designed a complete ETL pipeline without writing any code. You've learned to:
+
+Identify components: Documented source, transformation, and target layers
+Design architecture: Created visual diagrams showing data flow
+Define transformations: Specified cleaning, validation, and enrichment rules
+Plan error handling: Designed failure paths and logging strategies
+Why This Matters: Before building any data pipeline, proper design prevents costly mistakes. Your diagram serves as a blueprint for implementation and helps communicate requirements to stakeholders. This design-first approach is standard practice in data engineering.
+
+Next Steps: In future labs, you'll implement this pipeline using Python and Apache Airflow, transforming your design into working code.
+
+Key Takeaway: Good pipeline design considers not just the happy path, but also error handling, data quality, and operational monitoring from the start.
