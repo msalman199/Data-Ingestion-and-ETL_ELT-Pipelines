@@ -1,0 +1,53 @@
+=== ETL PIPELINE DATA FLOW ===
+
+FLOW SEQUENCE:
+1. Source → Extract
+   - Daily CSV file arrives at /data/incoming/ at 2:00 AM
+   - File contains raw order data from e-commerce system
+   - Approximately 10,000-50,000 orders per file
+
+2. Extract → Transform
+   - CSV file is read into memory
+   - Data is parsed into structured format
+   - Initial format validation occurs
+   - Raw data passed to transformation layer
+
+3. Transform → Load (Success Path)
+   - Data cleaning removes duplicates
+   - Validation rules applied to each record
+   - Business calculations performed (total_amount)
+   - Enrichment adds processing timestamp
+   - Clean records passed to load process
+
+4. Transform → Error Log (Failure Path)
+   - Invalid records identified during validation
+   - Records with missing required fields
+   - Records failing business rules
+   - Logged for manual review
+
+5. Load → Target Database
+   - Connection established to PostgreSQL
+   - Records inserted into processed_orders table
+   - Transaction committed
+   - Success count logged
+
+6. Load → Error Log (Failure Path)
+   - Database connection failures
+   - Constraint violations
+   - Duplicate key errors
+   - Logged with error details
+
+DATA TRANSFORMATIONS:
+- Input: order_id,customer_id,product_id,quantity,price,order_date
+- Output: All input fields PLUS total_amount, processing_timestamp, high_value_flag
+
+QUALITY CHECKS:
+- Duplicate detection: Check order_id uniqueness
+- Data validation: Verify ID formats and numeric ranges
+- Business rules: Flag high-value orders (>$1000)
+- Completeness: Ensure no NULL values in required fields
+
+ERROR HANDLING:
+- Validation errors: Logged with reason code
+- Load failures: Retry logic (3 attempts)
+- Critical failures: Alert sent to operations team
