@@ -1,0 +1,55 @@
+=== ETL PIPELINE COMPONENTS ===
+
+1. DATA SOURCE (EXTRACT)
+   - Type: CSV File
+   - Name: daily_orders.csv
+   - Location: /data/incoming/
+   - Format: Comma-separated values
+   - Columns: order_id, customer_id, product_id, quantity, price, order_date
+   - Update Frequency: Daily at 2:00 AM
+   - File Size: ~50MB per file
+   
+   Sample Data Structure:
+   order_id,customer_id,product_id,quantity,price,order_date
+   1001,C001,P501,2,29.99,2024-01-15
+   1002,C002,P502,1,49.99,2024-01-15
+2. TRANSFORMATION LAYER (TRANSFORM)
+   - Data Cleaning:
+     * Remove duplicate order_id entries
+     * Handle missing values in customer_id
+     * Validate price > 0
+     * Validate quantity > 0
+   
+   - Data Enrichment:
+     * Calculate total_amount = quantity * price
+     * Convert order_date to standard format (YYYY-MM-DD)
+     * Add processing_timestamp
+   
+   - Data Validation:
+     * Check order_id is unique
+     * Verify customer_id format (C + 3 digits)
+     * Verify product_id format (P + 3 digits)
+   
+   - Business Rules:
+     * Flag orders with total_amount > $1000 as "high_value"
+     * Reject orders with invalid dates
+
+3. TARGET DATABASE (LOAD)
+   - Database Type: PostgreSQL
+   - Database Name: ecommerce_db
+   - Schema: orders
+   - Table Name: processed_orders
+   
+   Table Structure:
+   - order_id (INTEGER, PRIMARY KEY)
+   - customer_id (VARCHAR(10))
+   - product_id (VARCHAR(10))
+   - quantity (INTEGER)
+   - price (DECIMAL(10,2))
+   - total_amount (DECIMAL(10,2))
+   - order_date (DATE)
+   - processing_timestamp (TIMESTAMP)
+   - high_value_flag (BOOLEAN)
+   
+   - Load Strategy: Append new records daily
+   - Error Handling: Log failed records to error table
